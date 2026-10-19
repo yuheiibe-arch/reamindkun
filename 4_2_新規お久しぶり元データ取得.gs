@@ -52,13 +52,13 @@ function resolveShiftWithPaste_(shiftLookup, today, iki, rawName, tsDateObj, for
         dept: firstShift.dept || defaultDept,
         timeStr: firstShift.timeStr || defaultTime,
         statusText: isChanged
-          ? `★貼付用で前倒し補正 [元:${fKey} ${defaultClinic}(${defaultTime}) → 実:${firstShift.dateKey} ${firstShift.clinic}(${firstShift.timeStr})]`
+          ? `[貼付用で前倒し補正] 元:${fKey} ${defaultClinic}(${defaultTime}) -> 実:${firstShift.dateKey} ${firstShift.clinic}(${firstShift.timeStr})`
           : `貼付用と一致確認済 (${firstShift.timeStr})`
       };
     }
   }
 
-  // ★【保険】医籍番号がない（またはタイムスタンプ範囲外だった）場合でも、
+  // 【保険】医籍番号がない（またはタイムスタンプ範囲外だった）場合でも、
   // 「フォームの勤務日 ＋ 氏名（またはカナ）」が一致するシフトがあれば、時間がずれていても同一シフトとみなして採用する
   const dateNameKey = `${fKey}_${nKey}`;
   const dateKanaKey = kanaKey ? `${fKey}_${kanaKey}` : '';
@@ -74,7 +74,7 @@ function resolveShiftWithPaste_(shiftLookup, today, iki, rawName, tsDateObj, for
       clinic: exactClinicShift.clinic || defaultClinic,
       dept: exactClinicShift.dept || defaultDept,
       timeStr: exactClinicShift.timeStr || defaultTime,
-      statusText: `★保険(勤務日＋氏名)で一致確認 (${exactClinicShift.timeStr || defaultTime})`
+      statusText: `[保険(勤務日+氏名)で一致確認] (${exactClinicShift.timeStr || defaultTime})`
     };
   }
 
@@ -93,7 +93,7 @@ function resolveShiftWithPaste_(shiftLookup, today, iki, rawName, tsDateObj, for
         clinic: firstShift.clinic || defaultClinic,
         dept: firstShift.dept || defaultDept,
         timeStr: firstShift.timeStr || defaultTime,
-        statusText: `★貼付用で日程変更補正 [元:${fKey} ${defaultClinic}(${defaultTime}) → 実:${firstShift.dateKey} ${firstShift.clinic}(${firstShift.timeStr})]`
+        statusText: `[貼付用で日程変更補正] 元:${fKey} ${defaultClinic}(${defaultTime}) -> 実:${firstShift.dateKey} ${firstShift.clinic}(${firstShift.timeStr})`
       };
     }
   }
@@ -107,20 +107,21 @@ function resolveShiftWithPaste_(shiftLookup, today, iki, rawName, tsDateObj, for
  * 正規化した元データ配列（sourceEntries）を返す関数（動的ヘッダー取得）
  */
 function fetchSourceEntriesFromSaiyoAndOhisa_(shiftLookup) {
+  const lookup = shiftLookup || buildCurrentAndNextMonthShiftLookup_();
   const sourceEntries = [];
   const registeredIkiSet = new Set();
   const registeredNameSet = new Set();
 
   // 医籍番号が空欄の場合にシフト側辞書から氏名一致で医籍番号を引くヘルパー
   const resolveIkiByNameFallback = (rawName) => {
-    if (!shiftLookup) return '';
+    if (!lookup) return '';
     const nKey = normalizeDoctorName_(rawName);
-    if (nKey && shiftLookup.ikiByKanji && shiftLookup.ikiByKanji.has(nKey)) {
-      return shiftLookup.ikiByKanji.get(nKey);
+    if (nKey && lookup.ikiByKanji && lookup.ikiByKanji.has(nKey)) {
+      return lookup.ikiByKanji.get(nKey);
     }
     const kanaKey = (typeof extractAndNormalizeKana_ === 'function') ? extractAndNormalizeKana_(rawName) : '';
-    if (kanaKey && shiftLookup.ikiByKana && shiftLookup.ikiByKana.has(kanaKey)) {
-      return shiftLookup.ikiByKana.get(kanaKey);
+    if (kanaKey && lookup.ikiByKana && lookup.ikiByKana.has(kanaKey)) {
+      return lookup.ikiByKana.get(kanaKey);
     }
     return '';
   };

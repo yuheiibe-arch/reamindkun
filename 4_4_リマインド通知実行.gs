@@ -7,7 +7,7 @@
  */
 
 /**
- * ① 初回勤務日の1週間前リマインド（毎日朝実行）
+ * 1. 初回勤務日の1週間前リマインド（毎日朝実行）
  */
 function runOneWeekBeforeReminder() {
   const targetDate = new Date();
@@ -64,7 +64,7 @@ function runOneWeekBeforeReminder() {
 }
 
 /**
- * ② 毎週月曜日の「今週の新規勤務医師・お久しぶり勤務医師」まとめリマインド
+ * 2. 毎週月曜日の「今週の新規勤務医師・お久しぶり勤務医師」まとめリマインド
  */
 function runMondayWeeklyReminder() {
   const today = new Date();
@@ -75,7 +75,7 @@ function runMondayWeeklyReminder() {
   const startKey = fastFormatDate(today);
   const endKey = fastFormatDate(endOfWeek);
 
-  // 貼付用シートと最新同期した上で抽出（石川先生のように先週10/13に前倒し済みの人は dateKey が 2026/10/13 になるため今週分から自動で外れる）
+  // 貼付用シートと最新同期した上で抽出（前倒し済みの人は dateKey が過去になるため今週分から自動で外れる）
   const allEntries = syncTargetDoctorsQueue();
   const weeklyTargets = allEntries
     .filter(e => e.dateKey >= startKey && e.dateKey <= endKey)

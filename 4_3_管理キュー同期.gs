@@ -1,13 +1,13 @@
 /**
  * =================================================================
  * 【4_3_管理キュー同期.gs】
- * ・永続管理シート「⚙️_新規お久しぶり管理」の読み書き・マージ同期（syncTargetDoctorsQueue）
+ * ・永続管理シートの読み書き・マージ同期（syncTargetDoctorsQueue）
  * ・各種送信済みフラグの記録ヘルパー（markTargetQueueFlag_）
  * =================================================================
  */
 
 /**
- * 永続管理シート「⚙️_新規お久しぶり管理」を〈採用報告〉・「お久しぶり勤務」・「貼付用」と同期し、
+ * 永続管理シートを〈採用報告〉・「お久しぶり勤務」・「貼付用」と同期し、
  * 全レコードの最新配列を返すメイン同期関数
  */
 function syncTargetDoctorsQueue() {
@@ -57,12 +57,12 @@ function syncTargetDoctorsQueue() {
   }
 
   const shiftLookup = buildCurrentAndNextMonthShiftLookup_();
-  const sourceEntries = fetchSourceEntriesFromSaiyoAndOhisa_();
+  const sourceEntries = fetchSourceEntriesFromSaiyoAndOhisa_(shiftLookup);
   const nowStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // 永続管理シート（⚙️_新規お久しぶり管理）とのマージ＆貼付用補正の反映
+  // 永続管理シートとのマージ＆貼付用補正の反映
   const rowsToAppend = [];
   const finalRecords = [];
 
@@ -74,7 +74,9 @@ function syncTargetDoctorsQueue() {
     let trueDateObj = src.formDateObj;
     let trueDateKey = src.formDateKey;
     let trueTime = src.formTime;
-    let statusText = src.iki ? 'フォーム値（貼付用に前倒しなし）' : 'フォーム値（医籍番号なし）';
+    let statusText = src.uniqueKey.startsWith('COMMENT_')
+      ? '[スタッフコメントから自動補完]'
+      : (src.iki ? 'フォーム値（貼付用に前倒しなし）' : 'フォーム値（医籍番号なし）');
     let initSent = '';
     let remind7Sent = '';
     let weeklySent = '';
@@ -95,8 +97,8 @@ function syncTargetDoctorsQueue() {
       weeklySent  = String(r[colIdx.weeklySent] || '').trim();
     }
 
-    // 新規採用について貼付用シートで前倒しチェック
-    if (src.type === '新規') {
+    // 新規採用について貼付用シートで前倒しチェック（スタッフコメント補完分は既に貼付用の値のため除外）
+    if (src.type === '新規' && !src.uniqueKey.startsWith('COMMENT_')) {
       const resolved = resolveShiftWithPaste_(
         shiftLookup, today,
         src.iki, src.rawName, src.tsDateObj, src.formDateObj, trueDateObj,
@@ -135,17 +137,18 @@ function syncTargetDoctorsQueue() {
     newRowData[colIdx.syncedAt]    = nowStr;
 
     if (existing) {
-      // 確定勤務日・確定拠点・確定時間・補正状態に変化があれば行を更新
+      // 確定勤務日・確定拠点・確定時間・補正状態・医籍番号に変化があれば行を更新
       const prevTDate = fastFormatDate(parseDateToSafeDateObj(existing.rowValues[colIdx.tDate]));
       const prevTClinic = String(existing.rowValues[colIdx.tClinic] || '').trim();
       const prevTTime = String(existing.rowValues[colIdx.tTime] || '').trim();
       const prevStatus = String(existing.rowValues[colIdx.status] || '').trim();
+      const prevIki = String(existing.rowValues[colIdx.iki] || '').trim();
 
-      if (prevTDate !== trueDateKey || prevTClinic !== trueClinic || prevTTime !== trueTime || prevStatus !== statusText) {
+      if (prevTDate !== trueDateKey || prevTClinic !== trueClinic || prevTTime !== trueTime || prevStatus !== statusText || prevIki !== src.iki) {
         qSheet.getRange(existing.sheetRowIndex, 1, 1, newRowData.length).setValues([newRowData]);
       }
     } else {
-      // 初回シート生成時に過去の古いデータまで一斉送信されないよう、すでに過去日のものは「過去日スキップ」を入れる
+      // 初回シート生成時に過去の古いデータまで一斉送信されないよう、すでに過去日のものは「過去日済」を入れる
       if (trueDateObj < today) {
         newRowData[colIdx.initSent]    = '過去日済';
         newRowData[colIdx.remind7Sent] = '過去日済';
@@ -193,7 +196,7 @@ function syncTargetDoctorsQueue() {
 }
 
 /**
- * 永続管理シート（⚙️_新規お久しぶり管理）の特定フラグ列に送信日時を記録するヘルパー
+ * 永続管理シートの特定フラグ列に送信日時を記録するヘルパー
  */
 function markTargetQueueFlag_(uniqueKey, columnHeaderName, customValue) {
   const opened = openSheetWithHeaders(CONFIG.SS_ID.SELF, CONFIG.SHEET.TARGET_QUEUE, 1);
