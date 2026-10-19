@@ -1,6 +1,6 @@
 /**
  * =================================================================
- * 【5_拠点間移動_トリガー管理.gs】（要件6 ＆ 全体トリガー管理）
+ * 【5_1_拠点間移動_通知.gs】（要件6：拠点間移動の抽出＆通知）
  * ・通常平日（翌日が平日）：翌日（明日）1日分のみを通知
  * ・金曜日・祝前日：直後の連続する「土日・祝日」の分のみをまとめて通知（休み明けの平日は含めない）
  * ・土日・祝日当日：デイリー分として翌日（明日）1日分を通知（土曜なら日曜分、日曜なら月曜分を通知）
@@ -194,89 +194,4 @@ ${bodyLines.join('\n')}
   pendingHistoryRecords.forEach(rec => {
     recordSentHistory('拠点間移動', rec.uniqueKey, rec.doctorName, rec.clinicPair, rec.dateKey);
   });
-}
-
-/**
- * 連携キュー（⚙️_連携キュー）を処理する関数（5分おきトリガー等で処理）
- */
-function processEventQueue() {
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) return;
-
-  try {
-    const ss = SpreadsheetApp.openById(CONFIG.SS_ID.SELF);
-    if (!ss.getSheetByName(CONFIG.SHEET.EVENT_QUEUE)) {
-      initialSetup();
-    }
-    const opened = openSheetWithHeaders(CONFIG.SS_ID.SELF, CONFIG.SHEET.EVENT_QUEUE, 1);
-    const { sheet, values, headerMap } = opened;
-    if (values.length <= 1) return;
-
-    const idxType = requireColumnAny(headerMap, ['イベント種別'], '⚙️_連携キュー');
-    const idxStatus = requireColumnAny(headerMap, ['処理ステータス'], '⚙️_連携キュー');
-    const idxDoneAt = requireColumnAny(headerMap, ['処理完了日時'], '⚙️_連携キュー');
-
-    for (let i = 1; i < values.length; i++) {
-      const status = String(values[i][idxStatus] || '').trim();
-      if (status !== '未処理') continue;
-
-      const eventType = String(values[i][idxType] || '').trim();
-      try {
-        if (eventType === 'MIJYUSOKU_POST') {
-          runWeeklyAbsencePost();
-        } else if (eventType === 'SAIYO_POST') {
-          runNewHirePostFromUrlSheet();
-        }
-        const nowStr = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
-        sheet.getRange(i + 1, idxStatus + 1).setValue('処理済');
-        sheet.getRange(i + 1, idxDoneAt + 1).setValue(nowStr);
-      } catch (err) {
-        sheet.getRange(i + 1, idxStatus + 1).setValue(`エラー: ${err.message}`);
-      }
-    }
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * 定期実行トリガーの一括登録（初回のみ実行）
- */
-function setupAllTriggers() {
-  const triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(t => ScriptApp.deleteTrigger(t));
-
-  // 1. 連携キュー＆お久しぶり勤務の初回検知（5分おき）
-  ScriptApp.newTrigger('periodicDaemon5Min')
-    .timeBased()
-    .everyMinutes(5)
-    .create();
-
-  // 2. 毎日朝9時：1週間前リマインド ＆ 拠点間移動通知 ＆（月曜なら週次リマインド）
-  ScriptApp.newTrigger('dailyMorningBatch')
-    .timeBased()
-    .atHour(9)
-    .everyDays(1)
-    .create();
-
-  Logger.log('✅ トリガーの設定が完了しました！（5分おき監視 ＆ 毎日朝9時バッチ）');
-  try {
-    SpreadsheetApp.getUi().alert('✅ トリガーの設定が完了しました！\n・5分おき：DS部投稿連動＆お久しぶり勤務検知\n・毎日朝9時：1週間前リマインド・月曜週次リマインド・拠点間移動通知');
-  } catch (e) {
-    // スクリプトエディタから直接実行した場合はUIアラートをスキップ
-  }
-}
-
-function periodicDaemon5Min() {
-  try { processEventQueue(); } catch (e) { Logger.log('Queue Error: ' + e.message); }
-  try { runOhisashiburiInitialCheck(); } catch (e) { Logger.log('Ohisa Error: ' + e.message); }
-}
-
-function dailyMorningBatch() {
-  try { runOneWeekBeforeReminder(); } catch (e) { Logger.log('7D Remind Error: ' + e.message); }
-  try { runClinicTransferPost(); } catch (e) { Logger.log('Transfer Error: ' + e.message); }
-  // 月曜日（getDay() === 1）なら今週のまとめリマインドを実行
-  if (new Date().getDay() === 1) {
-    try { runMondayWeeklyReminder(); } catch (e) { Logger.log('Monday Remind Error: ' + e.message); }
-  }
 }

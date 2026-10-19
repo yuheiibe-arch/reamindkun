@@ -38,10 +38,12 @@ const CONFIG = {
     KAKUTEI_SHIFT: '確定シフト',
     SAIYO_REPORT: '〈採用報告〉',
     OHISASHIBURI: 'お久しぶり勤務',
+    DIRECT_FIRST: 'DS直接応募初回勤務', // ★追加：直接応募初回勤務フォーム用シート
     URL_SHEET: 'URL',
     // 本スプシ内に自動生成する管理用シート
     LOG_HISTORY: '⚙️_送信履歴',
-    EVENT_QUEUE: '⚙️_連携キュー'
+    EVENT_QUEUE: '⚙️_連携キュー',
+    TARGET_QUEUE: '⚙️_新規お久しぶり管理' // 削除しない永続管理キュー（台帳）
   },
 
   // 特殊拠点（小児科・内科を分けて表記する拠点）
@@ -51,7 +53,7 @@ const CONFIG = {
 /**
  * 初回セットアップ用関数
  * 1. Chatwork APIキーの保存（未設定の場合）
- * 2. 管理用シート（⚙️_送信履歴 / ⚙️_連携キュー）の自動作成
+ * 2. 管理用シート（⚙️_送信履歴 / ⚙️_連携キュー / ⚙️_新規お久しぶり管理）の自動作成
  * 3. 不要な初期シート「シート1」の自動削除
  */
 function initialSetup() {
@@ -63,7 +65,7 @@ function initialSetup() {
 
   const ss = SpreadsheetApp.openById(CONFIG.SS_ID.SELF);
 
-  // 1. 送信履歴シートの自動生成
+  // 1. 送信履歴シートの自動生成（48時間で自動掃除）
   let logSheet = ss.getSheetByName(CONFIG.SHEET.LOG_HISTORY);
   if (!logSheet) {
     logSheet = ss.insertSheet(CONFIG.SHEET.LOG_HISTORY);
@@ -72,7 +74,7 @@ function initialSetup() {
     Logger.log('✅ シート「⚙️_送信履歴」を作成しました。');
   }
 
-  // 2. 連携キューシートの自動生成
+  // 2. 連携キューシートの自動生成（48時間で自動掃除）
   let queueSheet = ss.getSheetByName(CONFIG.SHEET.EVENT_QUEUE);
   if (!queueSheet) {
     queueSheet = ss.insertSheet(CONFIG.SHEET.EVENT_QUEUE);
@@ -81,7 +83,37 @@ function initialSetup() {
     Logger.log('✅ シート「⚙️_連携キュー」を作成しました。');
   }
 
-  // 3. 不要な「シート1」が残っていれば自動削除
+  // 3. 新規・お久しぶり永続管理シートの自動生成（削除しない台帳）
+  let targetSheet = ss.getSheetByName(CONFIG.SHEET.TARGET_QUEUE);
+  if (!targetSheet) {
+    targetSheet = ss.insertSheet(CONFIG.SHEET.TARGET_QUEUE);
+    targetSheet.appendRow([
+      'ユニークキー',
+      '種別',
+      'タイムスタンプ',
+      '医籍番号',
+      '医師名',
+      '性別',
+      '専門科目',
+      'フォーム拠点',
+      'フォーム診療科',
+      'フォーム勤務日',
+      'フォーム時間',
+      '確定拠点',
+      '確定診療科',
+      '確定勤務日',
+      '確定時間',
+      '補正状態',
+      '初回通知済',
+      '1週間前リマインド済',
+      '週次リマインド済',
+      '最終同期日時'
+    ]);
+    targetSheet.setFrozenRows(1);
+    Logger.log('✅ シート「⚙️_新規お久しぶり管理」を作成しました。');
+  }
+
+  // 4. 不要な「シート1」が残っていれば自動削除
   const defaultSheet = ss.getSheetByName('シート1');
   if (defaultSheet && ss.getSheets().length > 1) {
     ss.deleteSheet(defaultSheet);
@@ -101,6 +133,7 @@ function onOpen() {
     .addItem('② 新規採用（URLシートC2）を今すぐ拠点へ投稿', 'runNewHirePostFromUrlSheet')
     .addItem('③ お久しぶり勤務の未送信分を今すぐチェック＆投稿', 'runOhisashiburiInitialCheck')
     .addSeparator()
+    .addItem('🔄 新規・お久しぶり管理キューを貼付用と今すぐ同期', 'syncTargetDoctorsQueue')
     .addItem('④ 1週間前リマインド（新規・お久しぶり）を今すぐ実行', 'runOneWeekBeforeReminder')
     .addItem('⑤ 今週の新規・お久しぶり週次リマインド（月曜用）を今すぐ実行', 'runMondayWeeklyReminder')
     .addItem('⑥ 拠点間移動発生医師の事前通知を今すぐ実行', 'runClinicTransferPost')
