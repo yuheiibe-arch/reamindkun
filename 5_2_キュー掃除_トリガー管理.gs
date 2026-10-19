@@ -143,20 +143,20 @@ function setupAllTriggers() {
     .everyDays(1)
     .create();
 
-  // 3. 毎日夕方17時〜18時：拠点間移動通知
+  // 3. 毎日夕方17時〜18時：拠点間移動通知 ＆ 明日の新規・お久しぶり前日リマインド
   ScriptApp.newTrigger('dailyMorningBatch')
     .timeBased()
     .atHour(17)
     .everyDays(1)
     .create();
 
-  Logger.log('✅ トリガーの設定が完了しました！（5分おき監視 ／ 朝9時リマインド ／ 17時拠点間移動通知）');
+  Logger.log('トリガーの設定が完了しました。（5分おき監視 ／ 朝9時リマインド ／ 17時拠点間移動＆前日リマインド）');
   try {
     SpreadsheetApp.getUi().alert(
-      '✅ トリガーの設定が完了しました！\n' +
+      'トリガーの設定が完了しました。\n' +
       '・5分おき：DS部投稿連動＆お久しぶり勤務検知（＋48時間前データの自動削除）\n' +
       '・毎日 9時：1週間前リマインド・月曜週次リマインド\n' +
-      '・毎日17時：拠点間移動通知'
+      '・毎日17時：拠点間移動通知・明日の新規/お久しぶり前日リマインド'
     );
   } catch (e) {
     // スクリプトエディタから直接実行した場合はUIアラートをスキップ
@@ -180,8 +180,9 @@ function dailyReminderBatch() {
 }
 
 /**
- * 拠点間移動通知用バッチ（毎日17時〜18時トリガー）
+ * 拠点間移動通知 ＆ 明日の新規・お久しぶり前日リマインド用バッチ（毎日17時〜18時トリガー）
  */
 function dailyMorningBatch() {
   try { runClinicTransferPost(); } catch (e) { Logger.log('Transfer Error: ' + e.message); }
+  try { runTomorrowNewAndOhisaReminder(); } catch (e) { Logger.log('1D Tomorrow Remind Error: ' + e.message); }
 }
