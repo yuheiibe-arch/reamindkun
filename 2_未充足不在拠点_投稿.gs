@@ -3,6 +3,7 @@
  * 【2_未充足不在拠点_投稿.gs】（要件1・2）
  * 実シートの見出し構造に100%合致させた完全動的取得版
  * ★メンションは [toall] のみ付与
+ * ★バックアップ情報（いる場合／「バックアップ医師ご応募なし」）の完全転記対応
  * =================================================================
  */
 
@@ -14,15 +15,33 @@ function runWeeklyAbsencePost() {
   const autoSheet = ss.getSheetByName(CONFIG.SHEET.AUTO_TEXT);
   if (!autoSheet) throw new Error('「文章自動作成」シートが見つかりません。');
 
-  // 「文章自動作成」シートからラベル「作成期日」「終了期日」を動的に探して右隣の値を取得
+  // 「文章自動作成」シートからラベル「作成期日」「終了期日」および元の投稿文内のバックアップ記載を動的に探す
   const autoVals = autoSheet.getDataRange().getDisplayValues();
   let rawStart = '';
   let rawEnd = '';
+  const autoTextBackupMap = {}; // キー: "M/D" (例: "10/21"), 値: [title]...[/title]と[hr]の間のテキスト
+
   for (let r = 0; r < autoVals.length; r++) {
     for (let c = 0; c < autoVals[r].length; c++) {
-      const label = String(autoVals[r][c]).trim();
-      if (label === '作成期日' && c + 1 < autoVals[r].length) rawStart = autoVals[r][c + 1];
-      if (label === '終了期日' && c + 1 < autoVals[r].length) rawEnd = autoVals[r][c + 1];
+      const cellText = String(autoVals[r][c] || '').trim();
+      if (!cellText) continue;
+
+      if (cellText === '作成期日' && c + 1 < autoVals[r].length) rawStart = autoVals[r][c + 1];
+      if (cellText === '終了期日' && c + 1 < autoVals[r].length) rawEnd = autoVals[r][c + 1];
+
+      // セル内に元の投稿フォーマット（[title]M月D日...[/title]〇〇[hr]）が含まれていればバックアップ文言を抽出
+      if (cellText.includes('[/title]') && cellText.includes('[hr]')) {
+        const regex = /[title]\s*(?:\d{4}年)?\s*(\d{1,2})月\s*(\d{1,2})日[^\[\/]*?\[\/title\]([\s\S]*?)[hr]/g;
+        let match;
+        while ((match = regex.exec(cellText)) !== null) {
+          const m = parseInt(match[1], 10);
+          const d = parseInt(match[2], 10);
+          const betweenText = match[3].trim();
+          if (!isNaN(m) && !isNaN(d) && betweenText) {
+            autoTextBackupMap[`${m}/${d}`] = betweenText;
+          }
+        }
+      }
     }
   }
 
@@ -141,7 +160,11 @@ function runWeeklyAbsencePost() {
         const doc = String(row[s.idx] || '').trim();
         if (doc) backups.push(`${s.label}：${doc}先生（全拠点）`);
       });
-      if (backups.length > 0) backupInfoMap[dKey] = `【バックアップ】${backups.join('、')}`;
+      if (backups.length > 0) {
+        backupInfoMap[dKey] = `【バックアップ】${backups.join('、')}`;
+      } else {
+        backupInfoMap[dKey] = 'バックアップ医師ご応募なし';
+      }
       continue;
     }
 
@@ -186,6 +209,7 @@ function runWeeklyAbsencePost() {
   // 5. 1週間分の各日ループ
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     const dateKey = fastFormatDate(d);
+    const shortMdKey = `${d.getMonth() + 1}/${d.getDate()}`;
     const dateTitle = formatJPDateWithDay(d, false);
     const isSpecialDay = (d.getMonth() + 1 === 12 && d.getDate() === 31) || (d.getMonth() + 1 === 1 && d.getDate() <= 3);
 
@@ -279,9 +303,10 @@ function runWeeklyAbsencePost() {
     const requiredHours = Math.round(totalRequiredMinutes / 60);
     const filledHours = Math.round(totalFilledMinutes / 60);
 
-    let block = `[info][title]${dateTitle}[/title]`;
-    if (backupInfoMap[dateKey]) block += backupInfoMap[dateKey];
-    block += `[hr]\n`;
+    // 「文章自動作成」シートの元テキストがあればそのまま転記し、なければ確認用シートの集計結果（不在時は「バックアップ医師ご応募なし」）を使用
+    const backupText = autoTextBackupMap[shortMdKey] || backupInfoMap[dateKey] || 'バックアップ医師ご応募なし';
+
+    let block = `[info][title]${dateTitle}[/title]${backupText}[hr]\n`;
     block += `小児科1診目充足率：${rate}%（充足済み：${filledHours}h/募集：${requiredHours}h）\n`;
     if (dailyOutputLines.length > 0) {
       dailyOutputLines.sort();
